@@ -10,8 +10,12 @@ output: html_document
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ### Load any Required Packages
-```{r}
+```{r, message=FALSE}
 require(dplyr)
+require(lubridate)
+require(ggplot2)
+require(DT)
+options(scipen = 999)
 ```
 
 # Data Processing
@@ -27,10 +31,10 @@ f.URL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.b
 ## If no file exists the zipped .csv will be downloaded
 ## Data frame is loaded with .csv containing raw data
 if (file.exists(f.Name)) {
-    storm.df <- read.csv(bzfile(f.Name))
+    storm.df <- read.csv(bzfile(f.Name), stringsAsFactors=FALSE)
 } else{
     download.file(f.URL, f.Name)
-    storm.df <- read.csv(bzfile(f.Name))
+    storm.df <- read.csv(bzfile(f.Name), stringsAsFactors=FALSE)
 }
 ```
 
@@ -38,26 +42,160 @@ if (file.exists(f.Name)) {
 
 ```{r}
 ## Select columns of data set that are of interest for analysis
+## Focusing on only storm events that cause human or economic loss
 df <- tbl_df(storm.df) %>%
     select(BGN_DATE, END_DATE, COUNTY, COUNTYNAME, STATE__, STATE, EVTYPE, FATALITIES, INJURIES, 
            PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP, REMARKS) %>%
     filter(!grepl("^Summary", EVTYPE),
-           FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0 | CROPDMG > 0) %>%
-    mutate(New.EVTYPE = ifelse(grepl("TSTM|THUNDERSTORM", EVTYPE, ignore.case=TRUE), "THUNDERSTORM", 
-                           ifelse(grepl("HAIL", EVTYPE, ignore.case=TRUE), "HAIL", 
-                                  ifelse(grepl("FLOOD", EVTYPE, ignore.case=TRUE), "FLOOD", 
-                                         ifelse(grepl("BLIZZARD", EVTYPE, ignore.case=TRUE), "BLIZZARD",
-                                                ifelse(grepl("WIND|MICROBURST", EVTYPE, ignore.case=TRUE), "WIND", 
-                                                       ifelse(grepl("HEAT", EVTYPE, ignore.case=TRUE), "HEAT", 
-                                                              ifelse(grepl("COLD|CHILL", EVTYPE, ignore.case=TRUE), "COLD", 
-                                                                     ifelse(grepl("HURRICANE", EVTYPE, ignore.case=TRUE), "HURRICANE", 
-                                                                            ifelse(grepl("TORNADO", EVTYPE, ignore.case=TRUE), "TORNADO", EVTYPE))))))))))
+           FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0 | CROPDMG > 0)
 
+## Extract years from date columns
+df$Begin.Date <- mdy_hms(df$BGN_DATE)
+df$End.Date <- mdy_hms(df$END_DATE)
+df$Begin.Year <- year(df$Begin.Date)
+df$End.Year <- year(df$End.Date)
+
+## Set up labels for which years were collected, better data collection in more recent years.
+levels <- c(-Inf, 1956, 1996, Inf)
+labels <- c("Tornado Tracking Tracked", "Tornado, Thunderstorm, Wind, and Hail Tracked", 
+            "All Event Types Tracked")
+df <- df%>%
+    mutate(x=cut(Begin.Year, levels, labels=labels))
+
+## Wrangle text for EVTYPE category to better bucket storm types
+df$EVTYPE <- as.character(df$EVTYPE)
+df$EVTYPE[grepl("WINTER|ICE|ICY|GLAZE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Winter Weather Event"
+df$EVTYPE[grepl("DRY|DROUGHT", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Drought Related"
+df$EVTYPE[grepl("SNOW|WINTERY MIX", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Snow"
+df$EVTYPE[grepl("HAIL", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Hail"
+df$EVTYPE[grepl("RAIN|PRECIPITATION|WETNESS|PRECIP|SHOWER", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Rain"
+df$EVTYPE[grepl("TSTM|THUNDERSTORM", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Thunderstorm"
+df$EVTYPE[grepl("HURRICANE|TYPHOON", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Hurricane-Typhoon"
+df$EVTYPE[grepl("BLIZZARD", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Blizzard"
+df$EVTYPE[grepl("FLOOD|RAPIDLY RISING WATER|HIGH WATER|FLD", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Flooding"
+df$EVTYPE[grepl("COLD|CHILL|LOW TEMPERATURE|RECORD LOW|HYPOTHERMIA", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Cold Related"
+df$EVTYPE[grepl("HEAT|HIGH TEMPERATURES|RECORD HIGH|WARM|HYPERTHERMIA", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Heat Related"
+df$EVTYPE[grepl("WIND|MICROBURST|DOWNBURST", df$EVTYPE, ignore.case=TRUE)] <- 
+    "High Wind"
+df$EVTYPE[grepl("FREEZING|SLEET|MIX", df$EVTYPE, ignore.case=TRUE)] <-  
+    "Freezing Rain-Sleet-Wintery Mix"
+df$EVTYPE[grepl("TORNADO|TORNDAO|NADO", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Tornado"
+df$EVTYPE[grepl("VOLCAN", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Volcanic Ash"
+df$EVTYPE[grepl("LIGHTNING|LIGHTING|LIGNTNING", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Lightning"
+df$EVTYPE[grepl("RIP|CURRENT|SURF|WAVE|SEAS", df$EVTYPE, ignore.case=TRUE)] <- 
+    "High Surf or Rip Current"
+df$EVTYPE[grepl("FOG", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Fog Related"
+df$EVTYPE[grepl("SURGE|TIDE|SWELLS", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Storm Surge-Tide Related"
+df$EVTYPE[grepl("FROST|FREEZE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Frost-Freeze"
+df$EVTYPE[grepl("TROPICAL", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Tropical Depression-Storm"    
+df$EVTYPE[grepl("FUNNEL|WATERSPOUT|DEVIL|SPOUT", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Dust Devils-Waterspouts-Funnel Clouds"
+df$EVTYPE[grepl("FIRE|SMOKE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Wildfires"
+df$EVTYPE[grepl("SLIDE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Landslide-Mudslide"
+df$EVTYPE[grepl("DUST", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Dust Storm"
+df$EVTYPE[grepl("TSUNAMI", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Tsunami"
+df$EVTYPE[grepl("AVALANCHE|AVALANCE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Avalanche"
+df$EVTYPE[grepl("SEICHE", df$EVTYPE, ignore.case=TRUE)] <- 
+    "Seiche"
+df$EVTYPE[!grepl("Hurricane-Typhoon|Winter Weather Event|Drought Related|Snow|Hail|Rain|Thunderstorm|Blizzard|Flooding|Cold Related|Heat Related|High Wind|
+Freezing Rain-Sleet-Wintery Mix|Tornado|Volcanic Ash|Lightning|High Surf or Rip Current|
+Fog Related|Storm Surge-Tide Related|Frost-Freeze|Tropical Depression-Storm|
+Dust Devils-Waterspouts-Funnel Clouds|Wildfires|Landslide-Mudslide|Dust Storm|Tsunami|
+Avalanche|Seiche", df$EVTYPE, ignore.case=TRUE)] <- "Other"
+
+## Due to poor coding dataset uses many different notations for hundreds, thousands, millions, billions, etc 
+## of dollar values. These scripts map the DMGEXP values to numeric equivalents and create new colum to look at 
+## total $. This simplifies things for graphing and analysis. This is still somewhat messy however.
+df$PROPDMGEXP <- as.character(df$PROPDMGEXP)
+df$PROPDMGEXP[grepl("^0|2|3", df$PROPDMGEXP, ignore.case=TRUE)] <- "100"
+df$PROPDMGEXP[grepl("\\?", df$PROPDMGEXP, ignore.case=TRUE)] <- "0"
+df$PROPDMGEXP[grepl("\\+|\\-|4|6|H|K", df$PROPDMGEXP, ignore.case=TRUE)] <- "1000"
+df$PROPDMGEXP[grepl("5|7", df$PROPDMGEXP, ignore.case=TRUE)] <- "10000"
+df$PROPDMGEXP[grepl("M", df$PROPDMGEXP, ignore.case=TRUE)] <- "1000000"
+df$PROPDMGEXP[grepl("B", df$PROPDMGEXP, ignore.case=TRUE)] <- "1000000000"
+df$PROPDMGEXP[grepl("^$", df$PROPDMGEXP, ignore.case=TRUE)] <- "0"
+## Figure out total $ property damage using values and units.
+df$Property.Damage.in.Dollars <- as.numeric(df$PROPDMGEXP) * as.numeric(df$PROPDMG)
+
+## total $. This simplifies things for graphing and analysis. This is still somewhat messy however.
+df$CROPDMGEXP <- as.character(df$CROPDMGEXP)
+df$CROPDMGEXP[grepl("^0|2|3", df$CROPDMGEXP, ignore.case=TRUE)] <- "100"
+df$CROPDMGEXP[grepl("\\?", df$CROPDMGEXP, ignore.case=TRUE)] <- "0"
+df$CROPDMGEXP[grepl("\\+|\\-|4|6|H|K", df$CROPDMGEXP, ignore.case=TRUE)] <- "1000"
+df$CROPDMGEXP[grepl("5|7", df$CROPDMGEXP, ignore.case=TRUE)] <- "10000"
+df$CROPDMGEXP[grepl("M", df$CROPDMGEXP, ignore.case=TRUE)] <- "1000000"
+df$CROPDMGEXP[grepl("B", df$CROPDMGEXP, ignore.case=TRUE)] <- "1000000000"
+df$CROPDMGEXP[grepl("^$", df$CROPDMGEXP, ignore.case=TRUE)] <- "0"
+## Figure out total $ property damage using values and units.
+df$Crop.Damage.in.Dollars <- as.numeric(df$CROPDMGEXP) * as.numeric(df$CROPDMG)
+
+df.summary <- df%>%
+    group_by(EVTYPE)%>%
+    summarise(Events = n(),
+              Total.Property.Damage.in.Dollars = 
+                  round(sum(Property.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Median.Property.Damage.in.Dollars = 
+                  round(median(Property.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Mean.Property.Damage.in.Dollars = 
+                  round(mean(Property.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Total.Crop.Damage.in.Dollars = 
+                  round(sum(Crop.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Median.Crop.Damage.in.Dollars = 
+                  round(median(Crop.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Mean.Crop.Damage.in.Dollars = 
+                  round(mean(Crop.Damage.in.Dollars, na.rm = TRUE), digits=0),
+              Total.Fatalities = 
+                  round(sum(FATALITIES, na.rm = TRUE), digits=0),
+              Total.Injuries = 
+                  round(sum(INJURIES, na.rm=TRUE), digits=0))
+df <- df%>%
+    select(-BGN_DATE, -END_DATE, -COUNTY, -COUNTYNAME, -STATE__, -REMARKS)%>%
+    rename(State=STATE, Storm.Event.Type=EVTYPE, Fatalities=FATALITIES, Injuries=INJURIES)
+
+df.summary <- df.summary%>%
+    rename(Storm.Event.Type= EVTYPE, Number.Events=Events, 
+           Total.Property.Damage=Total.Property.Damage.in.Dollars, 
+           Median.Property.Damage=Median.Property.Damage.in.Dollars,
+           Average.Property.Damage=Mean.Property.Damage.in.Dollars, 
+           Total.Crop.Damage=Total.Crop.Damage.in.Dollars,
+           Median.Crop.Damage=Median.Crop.Damage.in.Dollars, 
+           Average.Crop.Damage=Mean.Crop.Damage.in.Dollars)
 ```
 
 # Results
 
-```{r, echo=FALSE}
+```{r}
+datatable(df.summary, rownames = FALSE, filter="top", options=list(pageLength=30)) %>%
+    formatCurrency(c("Total.Property.Damage", "Median.Property.Damage", "Average.Property.Damage",  
+                     "Total.Crop.Damage", "Median.Crop.Damage", "Average.Crop.Damage"), "$")
+
+ggplot(df.summary, aes(Total.Fatalities, Total.Injuries, colour=Storm.Event.Type)) + geom_point()
+
+ggplot(df.summary, aes(Total.Property.Damage, Total.Crop.Damage, colour=Storm.Event.Type)) +geom_point()
+
 ```
 
 # Conclusion
