@@ -71,6 +71,19 @@ img {
 <div id="synopsis" class="section level1">
 <h1>Synopsis</h1>
 <p>When you click the <strong>Knit</strong> button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:</p>
+<div id="load-any-required-packages" class="section level3">
+<h3>Load any Required Packages</h3>
+<pre class="r"><code>require(dplyr)</code></pre>
+<pre><code>## Loading required package: dplyr</code></pre>
+<pre><code>## 
+## Attaching package: 'dplyr'</code></pre>
+<pre><code>## The following objects are masked from 'package:stats':
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+</div>
 </div>
 <div id="data-processing" class="section level1">
 <h1>Data Processing</h1>
@@ -83,15 +96,30 @@ f.URL &lt;- &quot;https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormDa
 ## Check to see if .csv file is in working directory 
 ## If no file exists the zipped .csv will be downloaded
 ## Data frame is loaded with .csv containing raw data
-# if (file.exists(f.Name)) {
-#     df &lt;- read.csv(bzfile(f.Name))
-# } else{
-#     download.file(f.URL, f.Name)
-#     df &lt;- read.csv(bzfile(f.Name))
-# }</code></pre>
+if (file.exists(f.Name)) {
+    storm.df &lt;- read.csv(bzfile(f.Name))
+} else{
+    download.file(f.URL, f.Name)
+    storm.df &lt;- read.csv(bzfile(f.Name))
+}</code></pre>
 </div>
 <div id="data-processing-steps" class="section level3">
 <h3>Data Processing Steps</h3>
+<pre class="r"><code>## Select columns of data set that are of interest for analysis
+df &lt;- tbl_df(storm.df) %&gt;%
+    select(BGN_DATE, END_DATE, COUNTY, COUNTYNAME, STATE__, STATE, EVTYPE, FATALITIES, INJURIES, 
+           PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP, REMARKS) %&gt;%
+    filter(!grepl(&quot;^Summary&quot;, EVTYPE),
+           FATALITIES &gt; 0 | INJURIES &gt; 0 | PROPDMG &gt; 0 | CROPDMG &gt; 0) %&gt;%
+    mutate(New.EVTYPE = ifelse(grepl(&quot;TSTM|THUNDERSTORM&quot;, EVTYPE, ignore.case=TRUE), &quot;THUNDERSTORM&quot;, 
+                           ifelse(grepl(&quot;HAIL&quot;, EVTYPE, ignore.case=TRUE), &quot;HAIL&quot;, 
+                                  ifelse(grepl(&quot;FLOOD&quot;, EVTYPE, ignore.case=TRUE), &quot;FLOOD&quot;, 
+                                         ifelse(grepl(&quot;BLIZZARD&quot;, EVTYPE, ignore.case=TRUE), &quot;BLIZZARD&quot;,
+                                                ifelse(grepl(&quot;WIND|MICROBURST&quot;, EVTYPE, ignore.case=TRUE), &quot;WIND&quot;, 
+                                                       ifelse(grepl(&quot;HEAT&quot;, EVTYPE, ignore.case=TRUE), &quot;HEAT&quot;, 
+                                                              ifelse(grepl(&quot;COLD|CHILL&quot;, EVTYPE, ignore.case=TRUE), &quot;COLD&quot;, 
+                                                                     ifelse(grepl(&quot;HURRICANE&quot;, EVTYPE, ignore.case=TRUE), &quot;HURRICANE&quot;, 
+                                                                            ifelse(grepl(&quot;TORNADO&quot;, EVTYPE, ignore.case=TRUE), &quot;TORNADO&quot;, EVTYPE))))))))))</code></pre>
 </div>
 </div>
 <div id="results" class="section level1">

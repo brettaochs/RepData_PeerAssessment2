@@ -9,6 +9,11 @@ output: html_document
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
+### Load any Required Packages
+```{r}
+require(dplyr)
+```
+
 # Data Processing
 
 For this analysis we will download and analyze data from the National Weather Service. For additional information about the data source please read the [National Weather Service Instruction 10-1605](https://www.ncdc.noaa.gov/stormevents/pd01016005curr.pdf) or visit the [National Climactic Data Center Storm Data FAQ Page](https://www.ncdc.noaa.gov/stormevents/faq.jsp).
@@ -21,15 +26,34 @@ f.URL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.b
 ## Check to see if .csv file is in working directory 
 ## If no file exists the zipped .csv will be downloaded
 ## Data frame is loaded with .csv containing raw data
-# if (file.exists(f.Name)) {
-#     df <- read.csv(bzfile(f.Name))
-# } else{
-#     download.file(f.URL, f.Name)
-#     df <- read.csv(bzfile(f.Name))
-# }
+if (file.exists(f.Name)) {
+    storm.df <- read.csv(bzfile(f.Name))
+} else{
+    download.file(f.URL, f.Name)
+    storm.df <- read.csv(bzfile(f.Name))
+}
 ```
 
 ### Data Processing Steps
+
+```{r}
+## Select columns of data set that are of interest for analysis
+df <- tbl_df(storm.df) %>%
+    select(BGN_DATE, END_DATE, COUNTY, COUNTYNAME, STATE__, STATE, EVTYPE, FATALITIES, INJURIES, 
+           PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP, REMARKS) %>%
+    filter(!grepl("^Summary", EVTYPE),
+           FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0 | CROPDMG > 0) %>%
+    mutate(New.EVTYPE = ifelse(grepl("TSTM|THUNDERSTORM", EVTYPE, ignore.case=TRUE), "THUNDERSTORM", 
+                           ifelse(grepl("HAIL", EVTYPE, ignore.case=TRUE), "HAIL", 
+                                  ifelse(grepl("FLOOD", EVTYPE, ignore.case=TRUE), "FLOOD", 
+                                         ifelse(grepl("BLIZZARD", EVTYPE, ignore.case=TRUE), "BLIZZARD",
+                                                ifelse(grepl("WIND|MICROBURST", EVTYPE, ignore.case=TRUE), "WIND", 
+                                                       ifelse(grepl("HEAT", EVTYPE, ignore.case=TRUE), "HEAT", 
+                                                              ifelse(grepl("COLD|CHILL", EVTYPE, ignore.case=TRUE), "COLD", 
+                                                                     ifelse(grepl("HURRICANE", EVTYPE, ignore.case=TRUE), "HURRICANE", 
+                                                                            ifelse(grepl("TORNADO", EVTYPE, ignore.case=TRUE), "TORNADO", EVTYPE))))))))))
+
+```
 
 # Results
 
