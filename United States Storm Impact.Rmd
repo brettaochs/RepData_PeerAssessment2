@@ -22,8 +22,10 @@ options(scipen = 999)
 
 For this analysis we will download and analyze data from the National Weather Service. For additional information about the data source please read the [National Weather Service Instruction 10-1605](https://www.ncdc.noaa.gov/stormevents/pd01016005curr.pdf) or visit the [National Climactic Data Center Storm Data FAQ Page](https://www.ncdc.noaa.gov/stormevents/faq.jsp).
 
+If the dataset has already been downloaded and is in your working directory the dataframe will be loaded from existing file.
+
 ### Download and Import Raw Data
-```{r}
+```{r cache=TRUE}
 ## Set variables to download and rename .csv files 
 f.Name <- "repdata-data-StormData.csv.bz2"
 f.URL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
@@ -39,6 +41,10 @@ if (file.exists(f.Name)) {
 ```
 
 ### Data Processing Steps
+
+There are more columns of data than are required for this analysis so we first select only the attributes of interest that give us an indication of type of event, locations of events, and information about the number of injuries, fatalities, and economic costs for property and crop damage. Another additional filter applied to dataset returns only storm events that either resulted in an injury, a fatality, an economic loss of property, or an economic loss of crops. While many other storm events were recorded throughout the dataset, the intention of this analysis was to evaluate human and economic loss of storm events.
+
+For this summary we are only interested in the years of the event so we do some cleaning to better format the begin and end years of each storm event. The next step is to standardize the event types as there are many different codes keyed in for different storm event types. While care was taken to be consistent in renaming, ther is some influence by the person generating the renaming codes based on their knowledge of weather events.
 
 ```{r}
 ## Select columns of data set that are of interest for analysis
@@ -125,7 +131,11 @@ Freezing Rain-Sleet-Wintery Mix|Tornado|Volcanic Ash|Lightning|High Surf or Rip 
 Fog Related|Storm Surge-Tide Related|Frost-Freeze|Tropical Depression-Storm|
 Dust Devils-Waterspouts-Funnel Clouds|Wildfires|Landslide-Mudslide|Dust Storm|Tsunami|
 Avalanche|Seiche", df$EVTYPE, ignore.case=TRUE)] <- "Other"
+```
 
+The next step was to standardize the units of magnitude for property and crop damage. Since dataset was taken over multiple year period by many different reporting parties there were inconsistencies in how $ were reported. There are both a damage and a damage magnitude column that according to source documents, "Alphabetical characters used to signify magnitude include “K” for thousands, “M” for millions, and “B” for billions", although there were other symbols and numbers that analyst had to evaluate individually and recode the column to generate overall damage amounts in dollars. New variables "Property.Damage.in.Dollars" and "Crop.Damage.in.Dollars" were calculated to better visualize economic loss in later tables and graphs.
+
+```{r}
 ## Due to poor coding dataset uses many different notations for hundreds, thousands, millions, billions, etc 
 ## of dollar values. These scripts map the DMGEXP values to numeric equivalents and create new colum to look at 
 ## total $. This simplifies things for graphing and analysis. This is still somewhat messy however.
@@ -151,7 +161,11 @@ df$CROPDMGEXP[grepl("B", df$CROPDMGEXP, ignore.case=TRUE)] <- "1000000000"
 df$CROPDMGEXP[grepl("^$", df$CROPDMGEXP, ignore.case=TRUE)] <- "0"
 ## Figure out total $ property damage using values and units.
 df$Crop.Damage.in.Dollars <- as.numeric(df$CROPDMGEXP) * as.numeric(df$CROPDMG)
+```
 
+After initial data standardization and cleaning steps we can then look at summaries of the dataset by storm event type. The dataset was initially summarized across the storm event types to give better indication of how much human or economic loss occured due to the storm event type. For representation in interactive tables additional summary data frames were created to allow deeper dive into not only total economic or human loss, but also average and median loss per event.
+
+```{r}
 df.summary <- df%>%
     group_by(EVTYPE)%>%
     summarise(Events = n(),
@@ -175,26 +189,65 @@ df <- df%>%
     select(-BGN_DATE, -END_DATE, -COUNTY, -COUNTYNAME, -STATE__, -REMARKS)%>%
     rename(State=STATE, Storm.Event.Type=EVTYPE, Fatalities=FATALITIES, Injuries=INJURIES)
 
-df.summary <- df.summary%>%
+df.summary.total <- df.summary%>%
+    select(EVTYPE, Events, Total.Property.Damage.in.Dollars, Total.Crop.Damage.in.Dollars) %>%
     rename(Storm.Event.Type= EVTYPE, Number.Events=Events, 
            Total.Property.Damage=Total.Property.Damage.in.Dollars, 
+           Total.Crop.Damage=Total.Crop.Damage.in.Dollars)
+
+df.summary.stats <- df.summary%>%
+    select(EVTYPE, Events, Median.Property.Damage.in.Dollars, Mean.Property.Damage.in.Dollars, Median.Crop.Damage.in.Dollars, Mean.Crop.Damage.in.Dollars) %>%
+    rename(Storm.Event.Type= EVTYPE, Number.Events=Events, 
            Median.Property.Damage=Median.Property.Damage.in.Dollars,
            Average.Property.Damage=Mean.Property.Damage.in.Dollars, 
-           Total.Crop.Damage=Total.Crop.Damage.in.Dollars,
            Median.Crop.Damage=Median.Crop.Damage.in.Dollars, 
            Average.Crop.Damage=Mean.Crop.Damage.in.Dollars)
+
+df.summary.humans <- df.summary %>%
+    select(EVTYPE, Events, Total.Fatalities, Total.Injuries) %>%
+    rename(Storm.Event.Type=EVTYPE, Number.Events=Events)
+    
 ```
 
 # Results
 
+One way to visualize the economic loss by storm event types was to build an interactive table with both total property damage and total crop damage columns. You can sort or filter table as desired and by keeping total number of storm events in the table get a sense of overall cost per event. From this table we realize that some storm event types are more detrimental for property loss and others for crop loss. 
+
+Storm event types like Flooding, Tornados, Hail, and Thunderstorms seem more prevalent across reporting period with high numbers of event and large economic losses, whereas events like Hurricane-Typhoon, Storm Surge-Tide Related, and Drought events do not have as many events but still show up as heavy economic losses.
+
 ```{r}
-datatable(df.summary, rownames = FALSE, filter="top", options=list(pageLength=30)) %>%
-    formatCurrency(c("Total.Property.Damage", "Median.Property.Damage", "Average.Property.Damage",  
-                     "Total.Crop.Damage", "Median.Crop.Damage", "Average.Crop.Damage"), "$")
+datatable(df.summary.total, rownames = FALSE, filter="top", options=list(pageLength=30)) %>%
+    formatCurrency(c("Total.Property.Damage", "Total.Crop.Damage"), "$")
+```
 
-ggplot(df.summary, aes(Total.Fatalities, Total.Injuries, colour=Storm.Event.Type)) + geom_point()
+I constructed a second table with Mean and Median Property and Crop Damage columns to better understand economic loss by storm event type. This table is also sortable and filterable to help user better understand the relationships between storm event type, number of events, and economic loss. 
 
-ggplot(df.summary, aes(Total.Property.Damage, Total.Crop.Damage, colour=Storm.Event.Type)) +geom_point()
+When evaluating property loss events it seems the most costly events on a median or mean basis are not as common, but when an event occurs it provides a huge economic loss of property. Crop damage is a little more confusing, as median crop loss is often 0 which means while many storm events may occur, most do not damage the farmers economically (lots of $0 loss events). However, when an event occurs and there is crop economic loss, it tends to be a big number.
+
+```{r}
+datatable(df.summary.stats, rownames = FALSE, filter="top", options=list(pageLength=30)) %>%
+    formatCurrency(c("Median.Property.Damage", "Average.Property.Damage",  
+                     "Median.Crop.Damage", "Average.Crop.Damage"), "$")
+```
+
+To understand the prevalance of human loss, a table was constructed to split out both fatalities and injuries for each storm event type across the reporting period. Again we see some similar patterns with the number of events and either fatalities or injuries, but it is quite noticeable that Tornado events cause high numbers of fatalities and injuries although this could be an artifact of the dataset only including tornado events before 1956 and limited other events from 1956-1996. A more robust analysis for loss may want to focus on the 1996-current dataset.
+
+```{r}
+datatable(df.summary.humans, rownames=FALSE, filter="top", options=list(pageLength=30))
+```
+
+
+
+```{r}
+ggplot(df.summary.humans, aes(Total.Fatalities, Total.Injuries, colour=Storm.Event.Type)) + geom_point()
+
+ggplot(df.summary.total, aes(Total.Property.Damage, Total.Crop.Damage, colour=Storm.Event.Type)) +geom_point()
+
+df.tornado <- df %>%
+    filter(Storm.Event.Type=="Tornado")
+
+ggplot(df.tornado, aes(Fatalities, Injuries, colour=Begin.Year)) + geom_point() + facet_grid(. ~ x)
+    
 
 ```
 
